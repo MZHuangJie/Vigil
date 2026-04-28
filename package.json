@@ -1,0 +1,59 @@
+{
+  "name": "vigil",
+  "version": "0.1.0",
+  "private": true,
+  "main": "electron/main.js",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "electron:dev": "electron .",
+    "electron:build": "next build && electron-builder",
+    "electron:prod": "$env:NODE_ENV='production'; electron ."
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.7.0",
+    "jsonpath-plus": "^10.3.0",
+    "next": "^14.2.29",
+    "node-cron": "^3.0.3",
+    "puppeteer": "^24.6.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^22.14.0",
+    "@types/node-cron": "^3.0.11",
+    "@types/react": "^18.3.20",
+    "@types/react-dom": "^18.3.6",
+    "concurrently": "^9.2.1",
+    "electron": "^41.3.0",
+    "electron-builder": "^26.8.1",
+    "typescript": "^5.8.3",
+    "wait-on": "^9.0.5"
+  },
+  "build": {
+    "appId": "com.vigil.desktop",
+    "productName": "Vigil",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      ".next/**/*",
+      "electron/**/*",
+      "public/**/*",
+      "package.json"
+    ],
+    "extraMetadata": {
+      "main": "electron/main.js"
+    },
+    "win": {
+      "target": "nsis"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  }
+}

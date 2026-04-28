@@ -1,0 +1,66 @@
+.panel {
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.panel h2 {
+  margin: 0 0 12px 0;
+  font-size: 16px;
+  color: var(--text-primary);
+}
+
+.alertList {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.alertItem {
+  padding: 8px 10px;
+  margin-bottom: 6px;
+  border-radius: 4px;
+  border-left: 3px solid var(--danger-color);
+  background: rgba(239, 68, 68, 0.08);
+}
+
+.alertTime {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 2px;
+}
+
+.alertMsg {
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.alertAction {
+  font-size: 11px;
+  color: var(--danger-color);
+  font-weight: 600;
+  margin-right: 4px;
+}
+
+.toast {
+  border-left-color: #f59e0b;
+  background: rgba(245, 158, 11, 0.08);
+}
+
+.empty {
+  text-align: center;
+  color: var(--text-muted);
+  padding: 24px;
+  font-size: 13px;
+}
+
+.clearBtn {
+  margin-top: 8px;
+  padding: 4px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 12px;
+}
