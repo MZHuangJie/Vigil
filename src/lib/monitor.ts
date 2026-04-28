@@ -8,11 +8,20 @@ import { addEvent } from "./db";
 export async function setupInterceptor(page: Page, config: TaskConfig): Promise<void> {
   if (config.monitor.mode === "intercept") {
     const urlPattern = new RegExp(config.monitor.urlPattern);
+    const throttleMs = config.monitor.throttleMs || 0;
+    const lastFired = new Map<string, number>();
 
     page.on("response", async (response: HTTPResponse) => {
       try {
         const url = response.url();
         if (!urlPattern.test(url)) return;
+
+        if (throttleMs > 0) {
+          const now = Date.now();
+          const last = lastFired.get(url) || 0;
+          if (now - last < throttleMs) return;
+          lastFired.set(url, now);
+        }
 
         const contentType = response.headers()["content-type"] || "";
         if (!contentType.includes("json") && !contentType.includes("text")) return;
@@ -25,8 +34,12 @@ export async function setupInterceptor(page: Page, config: TaskConfig): Promise<
           raw: body,
         };
 
-        addEvent(config.id, "stat", { url, fields: data.fields });
-        emitSSE({ type: "stat", taskId: config.id, data: { url, fields: data.fields } });
+        const fieldsSummary = Object.entries(data.fields)
+          .filter(([k]) => k !== "_debug")
+          .map(([k, v]) => `${k}=${typeof v === "object" ? JSON.stringify(v) : v}`)
+          .join(", ");
+        addEvent(config.id, "stat", { url, fields: fieldsSummary });
+        emitSSE({ type: "stat", taskId: config.id, data: `提取: ${fieldsSummary}` });
 
         processExtractedData(config, data);
       } catch {
@@ -71,8 +84,12 @@ export async function startPolling(page: Page, config: TaskConfig): Promise<Node
         raw: result,
       };
 
-      addEvent(config.id, "stat", { url: fullUrl, fields: data.fields });
-      emitSSE({ type: "stat", taskId: config.id, data: { url: fullUrl, fields: data.fields } });
+      const fieldsSummary = Object.entries(data.fields)
+        .filter(([k]) => k !== "_debug")
+        .map(([k, v]) => `${k}=${typeof v === "object" ? JSON.stringify(v) : v}`)
+        .join(", ");
+      addEvent(config.id, "stat", { url: fullUrl, fields: fieldsSummary });
+      emitSSE({ type: "stat", taskId: config.id, data: `提取: ${fieldsSummary}` });
 
       processExtractedData(config, data);
     } catch (error) {

@@ -5,13 +5,16 @@ import { sendNotification } from "./notifier";
 
 export function processExtractedData(config: TaskConfig, data: ExtractedData): void {
   for (const [fieldName, rawValue] of Object.entries(data.fields)) {
+    if (fieldName === "_debug") continue;
     if (rawValue === null || rawValue === undefined) continue;
     if (typeof rawValue === "boolean") continue;
 
-    const numValue = Number(rawValue);
-    if (isNaN(numValue)) continue;
-
-    addStatRecord(config.id, fieldName, numValue);
+    const values = Array.isArray(rawValue) ? rawValue : [rawValue];
+    for (const v of values) {
+      const numValue = Number(v);
+      if (isNaN(numValue)) continue;
+      addStatRecord(config.id, fieldName, numValue);
+    }
   }
 
   const results = computeStats(config);
@@ -19,10 +22,12 @@ export function processExtractedData(config: TaskConfig, data: ExtractedData): v
   if (config.extraction.targetField) {
     const targetResult = results.find((r) => r.fieldName === config.extraction.targetField);
     if (targetResult) {
+      const allRecords = getStatRecords(config.id, config.stats.windowSeconds || 60);
+      const count = allRecords.filter((r) => r.field_name === config.extraction.targetField).length;
       emitSSE({
         type: "stat",
         taskId: config.id,
-        data: { fieldName: targetResult.fieldName, value: targetResult.value },
+        data: `${count}个${targetResult.fieldName}的${aggLabel(targetResult.aggregation)}是${targetResult.value}`,
       });
     }
   }
@@ -100,6 +105,17 @@ function evaluateThreshold(value: number, operator: string, threshold: number): 
   }
 }
 
+function aggLabel(agg: string): string {
+  switch (agg) {
+    case "count": return "计数";
+    case "sum": return "总和";
+    case "avg": return "平均值";
+    case "min": return "最小值";
+    case "max": return "最大值";
+    default: return agg;
+  }
+}
+
 function checkThresholds(config: TaskConfig, results: StatResult[]): void {
   const triggered = results.filter((r) => r.triggered);
 
@@ -122,24 +138,24 @@ function compileTemplate(
   config: TaskConfig,
   groups: Array<{ fieldName: string; threshold?: number; operator?: string }>
 ): string {
-  let result = template.replace(/\{\{taskName\}\}/g, config.name);
+  let result = template.replace(/\{\{taskName\}\}/gi, config.name);
 
   const group = groups[0];
   if (group) {
-    result = result.replace(/\{\{fieldName\}\}/g, group.fieldName);
-    result = result.replace(/\{\{threshold\}\}/g, String(group.threshold ?? ""));
-    result = result.replace(/\{\{operator\}\}/g, group.operator ?? "");
+    result = result.replace(/\{\{fieldName\}\}/gi, group.fieldName);
+    result = result.replace(/\{\{threshold\}\}/gi, String(group.threshold ?? ""));
+    result = result.replace(/\{\{operator\}\}/gi, group.operator ?? "");
   }
 
   const now = new Date();
   const windowMs = (config.stats.windowSeconds || 60) * 1000;
   const windowFrom = new Date(now.getTime() - windowMs);
 
-  result = result.replace(/\{\{windowFrom\}\}/g, windowFrom.toISOString());
-  result = result.replace(/\{\{windowTo\}\}/g, now.toISOString());
+  result = result.replace(/\{\{windowFrom\}\}/gi, windowFrom.toISOString());
+  result = result.replace(/\{\{windowTo\}\}/gi, now.toISOString());
 
   const summary = groups.map((g) => `${g.fieldName}: ${g.operator} ${g.threshold}`).join(", ");
-  result = result.replace(/\{\{statSummary\}\}/g, summary);
+  result = result.replace(/\{\{statSummary\}\}/gi, summary);
 
   return result;
 }

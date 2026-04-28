@@ -44,6 +44,7 @@ export interface TaskConfig {
     mode: "intercept" | "poll";
     urlPattern: string;
     pollIntervalMs?: number;
+    throttleMs?: number;
     requestMethod?: string;
     requestBody?: string;
     requestParams?: Record<string, string>;

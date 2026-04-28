@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, dialog } = require("electron");
+const { app, BrowserWindow, Menu, dialog, Notification, ipcMain } = require("electron");
 const path = require("path");
 const { createServer } = require("http");
 const { parse } = require("url");
@@ -29,10 +29,6 @@ function createWindow() {
   });
 
   mainWindow.loadURL(`http://localhost:${PORT}`);
-
-  if (dev) {
-    mainWindow.webContents.openDevTools({ mode: "detach" });
-  }
 
   mainWindow.on("closed", () => {
     mainWindow = null;
@@ -79,6 +75,12 @@ function createMenu() {
   const menu = Menu.buildFromTemplate(template);
   Menu.setApplicationMenu(menu);
 }
+
+ipcMain.on("show-notification", (_event, { title, body }) => {
+  if (Notification.isSupported()) {
+    new Notification({ title, body }).show();
+  }
+});
 
 app.whenReady().then(async () => {
   createMenu();

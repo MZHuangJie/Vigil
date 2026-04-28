@@ -26,6 +26,7 @@ export default function TaskConfigForm({ task, onSaved, onCancel }: Props) {
   const [urlPattern, setUrlPattern] = useState(task?.monitor?.urlPattern || "");
   const [pollIntervalMs, setPollIntervalMs] = useState(task?.monitor?.pollIntervalMs || 5000);
   const [requestMethod, setRequestMethod] = useState(task?.monitor?.requestMethod || "GET");
+  const [throttleMs, setThrottleMs] = useState(task?.monitor?.throttleMs || 0);
   const [requestBody, setRequestBody] = useState(task?.monitor?.requestBody || "");
   const [requestParams, setRequestParams] = useState<Array<{ key: string; value: string }>>(
     task?.monitor?.requestParams
@@ -155,6 +156,7 @@ export default function TaskConfigForm({ task, onSaved, onCancel }: Props) {
       mode: monitorMode,
       urlPattern,
       pollIntervalMs: monitorMode === "poll" ? pollIntervalMs : undefined,
+      throttleMs: throttleMs > 0 ? throttleMs : undefined,
       requestMethod: monitorMode === "poll" ? requestMethod : undefined,
       requestBody: monitorMode === "poll" && requestMethod !== "GET" ? requestBody : undefined,
       requestParams: monitorMode === "poll" && requestMethod === "GET"
@@ -322,6 +324,10 @@ export default function TaskConfigForm({ task, onSaved, onCancel }: Props) {
               {testing ? "测试中..." : "测试请求"}
             </button>
           </div>
+        </div>
+        <div className={styles.formGroup}>
+          <label>节流间隔 (毫秒，0=不节流)</label>
+          <input type="number" value={throttleMs} min={0} step={1000} onChange={(e) => setThrottleMs(Number(e.target.value))} />
         </div>
         {monitorMode === "poll" && (
           <>

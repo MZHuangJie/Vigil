@@ -16,6 +16,14 @@ export default function AlertPanel() {
   const [alerts, setAlerts] = useState<Alert[]>([]);
 
   useEffect(() => {
+    if (typeof Notification !== "undefined") {
+      Notification.requestPermission().then((perm) => {
+        console.log("[AlertPanel] Notification permission:", perm);
+      });
+    }
+  }, []);
+
+  useEffect(() => {
     const es = new EventSource("/api/events");
 
     es.onmessage = (event) => {
@@ -33,6 +41,18 @@ export default function AlertPanel() {
         };
 
         setAlerts((prev) => [...prev.slice(-199), entry]);
+
+        if (data.level === "toast") {
+          console.log("[AlertPanel] toast alert received:", data.message);
+          const electronAPI = (window as unknown as Record<string, unknown>).electronAPI as
+            | { send: (channel: string, data: unknown) => void }
+            | undefined;
+          if (electronAPI?.send) {
+            electronAPI.send("show-notification", { title: "Vigil 告警", body: data.message || "" });
+          } else if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+            new Notification("Vigil 告警", { body: data.message || "", icon: undefined });
+          }
+        }
       } catch {
         // ignore
       }

@@ -14,17 +14,23 @@ export async function performLogin(page: Page, config: TaskConfig): Promise<bool
 
     await page.goto(config.login.loginUrl, { waitUntil: "networkidle2" });
 
-    await page.waitForSelector(config.login.usernameSelector, { timeout: 10000 });
-    await page.type(config.login.usernameSelector, config.login.username);
+    // 检查登录表单是否存在（可能因上次 Cookie 已登录而跳过了登录页）
+    const formExists = await page.$(config.login.usernameSelector).catch(() => null);
+    if (formExists) {
+      await page.type(config.login.usernameSelector, config.login.username);
 
-    await page.waitForSelector(config.login.passwordSelector, { timeout: 5000 });
-    await page.type(config.login.passwordSelector, config.login.password);
+      await page.waitForSelector(config.login.passwordSelector, { timeout: 5000 });
+      await page.type(config.login.passwordSelector, config.login.password);
 
-    await page.waitForSelector(config.login.submitSelector, { timeout: 5000 });
-    await Promise.all([
-      page.click(config.login.submitSelector),
-      page.waitForNavigation({ waitUntil: "networkidle2", timeout: 30000 }).catch(() => {}),
-    ]);
+      await page.waitForSelector(config.login.submitSelector, { timeout: 5000 });
+      await Promise.all([
+        page.click(config.login.submitSelector),
+        page.waitForNavigation({ waitUntil: "networkidle2", timeout: 30000 }).catch(() => {}),
+      ]);
+    } else {
+      addEvent(config.id, "log", { message: "已登录（Cookie 有效），跳过表单填写" });
+      emitSSE({ type: "log", taskId: config.id, data: { message: "已登录（Cookie 有效），跳过表单填写" } });
+    }
 
     if (config.login.successIndicator) {
       try {
@@ -32,7 +38,7 @@ export async function performLogin(page: Page, config: TaskConfig): Promise<bool
           (indicator: string) => {
             const el = document.querySelector(indicator);
             if (el) return true;
-            return document.body.innerText.includes(indicator);
+            return document.body?.innerText?.includes(indicator) ?? false;
           },
           { timeout: 15000 },
           config.login.successIndicator
