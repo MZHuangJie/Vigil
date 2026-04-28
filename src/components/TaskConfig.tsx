@@ -27,6 +27,16 @@ export default function TaskConfigForm({ task, onSaved, onCancel }: Props) {
   const [pollIntervalMs, setPollIntervalMs] = useState(task?.monitor?.pollIntervalMs || 5000);
   const [requestMethod, setRequestMethod] = useState(task?.monitor?.requestMethod || "GET");
   const [requestBody, setRequestBody] = useState(task?.monitor?.requestBody || "");
+  const [requestParams, setRequestParams] = useState<Array<{ key: string; value: string }>>(
+    task?.monitor?.requestParams
+      ? Object.entries(task.monitor.requestParams).map(([key, value]) => ({ key, value }))
+      : []
+  );
+  const [requestHeaders, setRequestHeaders] = useState<Array<{ key: string; value: string }>>(
+    task?.monitor?.requestHeaders
+      ? Object.entries(task.monitor.requestHeaders).map(([key, value]) => ({ key, value }))
+      : []
+  );
 
   const [fields, setFields] = useState<ExtractionField[]>(task?.extraction?.fields || []);
   const [targetField, setTargetField] = useState(task?.extraction?.targetField || "");
@@ -37,6 +47,16 @@ export default function TaskConfigForm({ task, onSaved, onCancel }: Props) {
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [testResult, setTestResult] = useState<{
+    success: boolean;
+    status?: number;
+    timeTakenMs?: number;
+    body?: unknown;
+    error?: string;
+    viaBrowser?: boolean;
+    _diag?: Record<string, unknown>;
+  } | null>(null);
+  const [testing, setTesting] = useState(false);
 
   const addField = () => {
     setFields([...fields, { name: "", jsonPath: "", type: "string" }]);
@@ -88,6 +108,34 @@ export default function TaskConfigForm({ task, onSaved, onCancel }: Props) {
     setActions(actions.filter((_, i) => i !== index));
   };
 
+  const addParam = () => {
+    setRequestParams([...requestParams, { key: "", value: "" }]);
+  };
+
+  const updateParam = (index: number, update: Partial<{ key: string; value: string }>) => {
+    const updated = [...requestParams];
+    updated[index] = { ...updated[index], ...update };
+    setRequestParams(updated);
+  };
+
+  const removeParam = (index: number) => {
+    setRequestParams(requestParams.filter((_, i) => i !== index));
+  };
+
+  const addHeader = () => {
+    setRequestHeaders([...requestHeaders, { key: "", value: "" }]);
+  };
+
+  const updateHeader = (index: number, update: Partial<{ key: string; value: string }>) => {
+    const updated = [...requestHeaders];
+    updated[index] = { ...updated[index], ...update };
+    setRequestHeaders(updated);
+  };
+
+  const removeHeader = (index: number) => {
+    setRequestHeaders(requestHeaders.filter((_, i) => i !== index));
+  };
+
   const buildConfig = (): TaskConfig => ({
     id: task?.id || "",
     name,
@@ -108,7 +156,14 @@ export default function TaskConfigForm({ task, onSaved, onCancel }: Props) {
       urlPattern,
       pollIntervalMs: monitorMode === "poll" ? pollIntervalMs : undefined,
       requestMethod: monitorMode === "poll" ? requestMethod : undefined,
-      requestBody: monitorMode === "poll" ? requestBody : undefined,
+      requestBody: monitorMode === "poll" && requestMethod !== "GET" ? requestBody : undefined,
+      requestParams: monitorMode === "poll" && requestMethod === "GET"
+        ? Object.fromEntries(requestParams.filter((p) => p.key.trim()).map((p) => [p.key, p.value]))
+        : undefined,
+      requestHeaders:
+        requestHeaders.filter((h) => h.key.trim()).length > 0
+          ? Object.fromEntries(requestHeaders.filter((h) => h.key.trim()).map((h) => [h.key, h.value]))
+          : undefined,
     },
     extraction: {
       fields,
@@ -156,6 +211,41 @@ export default function TaskConfigForm({ task, onSaved, onCancel }: Props) {
       setError(err instanceof Error ? err.message : "保存失败");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleTestRequest = async () => {
+    setTesting(true);
+    setTestResult(null);
+    setError("");
+
+    const params = Object.fromEntries(requestParams.filter((p) => p.key.trim()).map((p) => [p.key, p.value]));
+    const headers = Object.fromEntries(requestHeaders.filter((h) => h.key.trim()).map((h) => [h.key, h.value]));
+    const payload: Record<string, unknown> = {
+      urlPattern,
+      requestMethod,
+      requestParams: requestMethod === "GET" && Object.keys(params).length > 0 ? params : undefined,
+      requestHeaders: Object.keys(headers).length > 0 ? headers : undefined,
+    };
+    if (requestMethod !== "GET" && requestBody) {
+      payload.requestBody = requestBody;
+    }
+    if (task?.id) {
+      payload.taskId = task.id;
+    }
+
+    try {
+      const res = await fetch("/api/tasks/test-request", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      setTestResult(data);
+    } catch (err) {
+      setTestResult({ success: false, error: err instanceof Error ? err.message : "请求失败" });
+    } finally {
+      setTesting(false);
     }
   };
 
@@ -226,7 +316,12 @@ export default function TaskConfigForm({ task, onSaved, onCancel }: Props) {
         </div>
         <div className={styles.formGroup}>
           <label>URL 匹配正则</label>
-          <input value={urlPattern} onChange={(e) => setUrlPattern(e.target.value)} placeholder=".*" />
+          <div style={{ display: "flex", gap: 8 }}>
+            <input value={urlPattern} onChange={(e) => setUrlPattern(e.target.value)} placeholder=".*" style={{ flex: 1 }} />
+            <button type="button" className={styles.testBtn} disabled={testing} onClick={handleTestRequest}>
+              {testing ? "测试中..." : "测试请求"}
+            </button>
+          </div>
         </div>
         {monitorMode === "poll" && (
           <>
@@ -247,7 +342,73 @@ export default function TaskConfigForm({ task, onSaved, onCancel }: Props) {
                 <textarea value={requestBody} onChange={(e) => setRequestBody(e.target.value)} />
               </div>
             )}
+            {requestMethod === "GET" && (
+              <>
+                <h4>请求参数</h4>
+                {requestParams.map((param, i) => (
+                  <div key={i} className={styles.fieldRow}>
+                    <input
+                      value={param.key}
+                      onChange={(e) => updateParam(i, { key: e.target.value })}
+                      placeholder="参数名"
+                      style={{ flex: 1 }}
+                    />
+                    <input
+                      value={param.value}
+                      onChange={(e) => updateParam(i, { value: e.target.value })}
+                      placeholder="参数值"
+                      style={{ flex: 2 }}
+                    />
+                    <button type="button" className={styles.removeBtn} onClick={() => removeParam(i)}>删除</button>
+                  </div>
+                ))}
+                <button type="button" className={styles.addBtn} onClick={addParam}>+ 添加参数</button>
+              </>
+            )}
+            <h4>自定义请求头</h4>
+            {requestHeaders.map((header, i) => (
+              <div key={i} className={styles.fieldRow}>
+                <input
+                  value={header.key}
+                  onChange={(e) => updateHeader(i, { key: e.target.value })}
+                  placeholder="Header 名 如 New-Api-User"
+                  style={{ flex: 1 }}
+                />
+                <input
+                  value={header.value}
+                  onChange={(e) => updateHeader(i, { value: e.target.value })}
+                  placeholder="Header 值"
+                  style={{ flex: 2 }}
+                />
+                <button type="button" className={styles.removeBtn} onClick={() => removeHeader(i)}>删除</button>
+              </div>
+            ))}
+            <button type="button" className={styles.addBtn} onClick={addHeader}>+ 添加请求头</button>
           </>
+        )}
+        {testResult && (
+          <div className={styles.testResult} style={{ marginTop: 12 }}>
+            <div className={testResult.success ? styles.testSuccess : styles.testFail}>
+              {testResult.success ? "✓ 请求成功" : "✗ 请求失败"}
+              {testResult.status !== undefined && ` (HTTP ${testResult.status})`}
+              {testResult.timeTakenMs !== undefined && ` · ${testResult.timeTakenMs}ms`}
+              {testResult.viaBrowser && " · 通过浏览器"}
+            </div>
+            {testResult.error && <div className={styles.testError}>{testResult.error}</div>}
+            {testResult.body !== undefined && (
+              <pre className={styles.testBody}>{JSON.stringify(testResult.body, null, 2)}</pre>
+            )}
+            {testResult._diag && (
+              <pre className={styles.testBody} style={{ background: "#1a1d2e", color: "#8b9dc3", fontSize: 11 }}>
+                {JSON.stringify(testResult._diag, null, 2)}
+              </pre>
+            )}
+            {!testResult.success && !testResult.viaBrowser && loginEnabled && (
+              <div className={styles.testError} style={{ color: "#f0a020" }}>
+                提示：需要先保存并启动任务（完成登录），测试请求才能携带浏览器中的认证信息
+              </div>
+            )}
+          </div>
         )}
       </div>
 
@@ -321,10 +482,29 @@ export default function TaskConfigForm({ task, onSaved, onCancel }: Props) {
                 <option value="wework">wework</option>
                 <option value="wework_user">wework_user</option>
               </select>
-              {action.type !== "wework_user" ? (
-                <input value={action.config.webhookUrl || ""} onChange={(e) => updateAction(i, { config: { ...action.config, webhookUrl: e.target.value } })} placeholder="Webhook URL" />
-              ) : (
-                <input value={action.config.toUser || ""} onChange={(e) => updateAction(i, { config: { ...action.config, toUser: e.target.value } })} placeholder="接收人 UserID" />
+              {(action.type === "log" || action.type === "toast") && (
+                <input
+                  value={action.config.messageTemplate || ""}
+                  onChange={(e) => updateAction(i, { config: { ...action.config, messageTemplate: e.target.value } })}
+                  placeholder="消息模板"
+                  style={{ flex: 2 }}
+                />
+              )}
+              {(action.type === "webhook" || action.type === "dingtalk" || action.type === "wework") && (
+                <input
+                  value={action.config.webhookUrl || ""}
+                  onChange={(e) => updateAction(i, { config: { ...action.config, webhookUrl: e.target.value } })}
+                  placeholder="Webhook URL"
+                  style={{ flex: 2 }}
+                />
+              )}
+              {action.type === "wework_user" && (
+                <input
+                  value={action.config.toUser || ""}
+                  onChange={(e) => updateAction(i, { config: { ...action.config, toUser: e.target.value } })}
+                  placeholder="接收人 UserID"
+                  style={{ flex: 2 }}
+                />
               )}
               <button type="button" className={styles.removeBtn} onClick={() => removeAction(i)}>删除</button>
             </div>

@@ -3,7 +3,7 @@ import path from "path";
 import fs from "fs";
 import type { TaskConfig, TaskRecord, TaskStatus, EventRecord, StatRecord } from "./types";
 
-let db: Database.Database;
+const DB_KEY = "__vigil_db__";
 
 function getDbPath(): string {
   const envPath = process.env.DATABASE_PATH;
@@ -16,50 +16,47 @@ function getDbPath(): string {
 }
 
 export function getDb(): Database.Database {
-  if (!db) {
+  const g = globalThis as Record<string, unknown>;
+  if (!g[DB_KEY]) {
     const dbPath = getDbPath();
-    db = new Database(dbPath);
+    const db = new Database(dbPath);
     db.pragma("journal_mode = WAL");
-    initSchema();
+    g[DB_KEY] = db;
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS tasks (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        enabled INTEGER DEFAULT 0,
+        config TEXT NOT NULL,
+        status TEXT DEFAULT 'stopped',
+        error_message TEXT,
+        created_at TEXT DEFAULT (datetime('now', 'localtime')),
+        updated_at TEXT DEFAULT (datetime('now', 'localtime'))
+      );
+
+      CREATE TABLE IF NOT EXISTS events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        task_id TEXT NOT NULL,
+        type TEXT NOT NULL,
+        data TEXT NOT NULL,
+        created_at TEXT DEFAULT (datetime('now', 'localtime')),
+        FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
+      );
+
+      CREATE TABLE IF NOT EXISTS stats_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        task_id TEXT NOT NULL,
+        field_name TEXT NOT NULL,
+        value REAL NOT NULL,
+        created_at TEXT DEFAULT (datetime('now', 'localtime')),
+        FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_events_task_id ON events(task_id);
+      CREATE INDEX IF NOT EXISTS idx_stats_task_id ON stats_history(task_id);
+    `);
   }
-  return db;
-}
-
-function initSchema(): void {
-  const database = db!;
-  database.exec(`
-    CREATE TABLE IF NOT EXISTS tasks (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      enabled INTEGER DEFAULT 0,
-      config TEXT NOT NULL,
-      status TEXT DEFAULT 'stopped',
-      error_message TEXT,
-      created_at TEXT DEFAULT (datetime('now', 'localtime')),
-      updated_at TEXT DEFAULT (datetime('now', 'localtime'))
-    );
-
-    CREATE TABLE IF NOT EXISTS events (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      task_id TEXT NOT NULL,
-      type TEXT NOT NULL,
-      data TEXT NOT NULL,
-      created_at TEXT DEFAULT (datetime('now', 'localtime')),
-      FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
-    );
-
-    CREATE TABLE IF NOT EXISTS stats_history (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      task_id TEXT NOT NULL,
-      field_name TEXT NOT NULL,
-      value REAL NOT NULL,
-      created_at TEXT DEFAULT (datetime('now', 'localtime')),
-      FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
-    );
-
-    CREATE INDEX IF NOT EXISTS idx_events_task_id ON events(task_id);
-    CREATE INDEX IF NOT EXISTS idx_stats_task_id ON stats_history(task_id);
-  `);
+  return g[DB_KEY] as Database.Database;
 }
 
 export function createTask(config: TaskConfig): void {
@@ -163,7 +160,10 @@ export function getStatSummary(taskId: string): Array<{ field_name: string; coun
 }
 
 export function closeDb(): void {
+  const g = globalThis as Record<string, unknown>;
+  const db = g[DB_KEY] as Database.Database | undefined;
   if (db) {
     db.close();
+    g[DB_KEY] = undefined;
   }
 }

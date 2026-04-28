@@ -13,10 +13,23 @@ interface LogEntry {
 
 export default function TaskLog() {
   const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [connected, setConnected] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const es = new EventSource("/api/events");
+
+    es.onopen = () => {
+      setConnected(true);
+      setLogs((prev) => [
+        ...prev.slice(-499),
+        { time: new Date().toLocaleTimeString(), type: "log", taskId: "", message: "SSE 已连接" },
+      ]);
+    };
+
+    es.onerror = () => {
+      setConnected(false);
+    };
 
     es.onmessage = (event) => {
       try {
@@ -61,7 +74,9 @@ export default function TaskLog() {
       <h2>实时日志</h2>
       <div className={styles.logLines} ref={containerRef}>
         {logs.length === 0 ? (
-          <div className={styles.empty}>等待事件...</div>
+          <div className={styles.empty}>
+            {connected ? "等待事件..." : "SSE 未连接，请检查服务是否正常运行"}
+          </div>
         ) : (
           logs.map((log, i) => (
             <div key={i} className={`${styles.logLine} ${lineClass(log.type)}`}>

@@ -14,9 +14,21 @@ interface Props {
   refreshFlag: number;
 }
 
+interface TestResult {
+  success: boolean;
+  status?: number;
+  timeTakenMs?: number;
+  body?: unknown;
+  error?: string;
+  viaBrowser?: boolean;
+  _diag?: Record<string, unknown>;
+}
+
 export default function TaskDashboard({ onSelect, refreshFlag }: Props) {
   const [tasks, setTasks] = useState<TaskWithStatus[]>([]);
   const [loading, setLoading] = useState(true);
+  const [testing, setTesting] = useState<string | null>(null);
+  const [testResults, setTestResults] = useState<Record<string, TestResult>>({});
 
   const fetchTasks = useCallback(async () => {
     try {
@@ -92,6 +104,31 @@ export default function TaskDashboard({ onSelect, refreshFlag }: Props) {
     }
   };
 
+  const handleTest = async (taskId: string) => {
+    setTesting(taskId);
+    setTestResults((prev) => {
+      const next = { ...prev };
+      delete next[taskId];
+      return next;
+    });
+    try {
+      const res = await fetch("/api/tasks/test-request", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ taskId }),
+      });
+      const data = await res.json();
+      setTestResults((prev) => ({ ...prev, [taskId]: data }));
+    } catch (err) {
+      setTestResults((prev) => ({
+        ...prev,
+        [taskId]: { success: false, error: err instanceof Error ? err.message : "请求失败" },
+      }));
+    } finally {
+      setTesting(null);
+    }
+  };
+
   const statusClass = (status: string) => {
     switch (status) {
       case "running": return styles.running;
@@ -119,29 +156,55 @@ export default function TaskDashboard({ onSelect, refreshFlag }: Props) {
         <div className={styles.empty}>暂无任务，点击右侧新建</div>
       ) : (
         tasks.map((task) => (
-          <div key={task.id} className={styles.taskItem}>
-            <div className={styles.taskInfo}>
-              <div className={styles.taskName}>
-                <span className={`${styles.statusBadge} ${statusClass(task.status)}`}>
-                  {statusLabel(task.status)}
-                </span>
-                {task.name}
+          <div key={task.id} className={styles.taskItemWrapper}>
+            <div className={styles.taskItem}>
+              <div className={styles.taskInfo}>
+                <div className={styles.taskName}>
+                  <span className={`${styles.statusBadge} ${statusClass(task.status)}`}>
+                    {statusLabel(task.status)}
+                  </span>
+                  {task.name}
+                </div>
+                <div className={styles.taskUrl}>{task.targetUrl}</div>
               </div>
-              <div className={styles.taskUrl}>{task.targetUrl}</div>
-            </div>
-            <div className={styles.taskActions}>
-              {task.status === "running" ? (
-                <button className={`${styles.btn} ${styles.stopBtn}`} onClick={() => handleStop(task.id)}>
-                  停止
+              <div className={styles.taskActions}>
+                {task.status === "running" ? (
+                  <button className={`${styles.btn} ${styles.stopBtn}`} onClick={() => handleStop(task.id)}>
+                    停止
+                  </button>
+                ) : (
+                  <button className={`${styles.btn} ${styles.startBtn}`} onClick={() => handleStart(task.id)}>
+                    启动
+                  </button>
+                )}
+                <button className={`${styles.btn} ${styles.testBtn}`} disabled={testing === task.id} onClick={() => handleTest(task.id)}>
+                  {testing === task.id ? "..." : "测试"}
                 </button>
-              ) : (
-                <button className={`${styles.btn} ${styles.startBtn}`} onClick={() => handleStart(task.id)}>
-                  启动
-                </button>
-              )}
-              <button className={`${styles.btn}`} onClick={() => onSelect(task)}>编辑</button>
-              <button className={`${styles.btn} ${styles.deleteBtn}`} onClick={() => handleDelete(task.id)}>删除</button>
+                <button className={`${styles.btn}`} onClick={() => onSelect(task)}>编辑</button>
+                <button className={`${styles.btn} ${styles.deleteBtn}`} onClick={() => handleDelete(task.id)}>删除</button>
+              </div>
             </div>
+            {testResults[task.id] && (
+              <div className={styles.testResult}>
+                <span className={testResults[task.id].success ? styles.testOk : styles.testFail}>
+                  {testResults[task.id].success ? "OK" : "FAIL"}
+                  {testResults[task.id].status !== undefined && ` ${testResults[task.id].status}`}
+                  {testResults[task.id].timeTakenMs !== undefined && ` ${testResults[task.id].timeTakenMs}ms`}
+                  {testResults[task.id].viaBrowser && " browser"}
+                </span>
+                {testResults[task.id].error && (
+                  <span className={styles.testError}>{testResults[task.id].error}</span>
+                )}
+                {testResults[task.id].body !== undefined && (
+                  <pre className={styles.testBody}>{JSON.stringify(testResults[task.id].body, null, 2)}</pre>
+                )}
+                {testResults[task.id]._diag && (
+                  <pre className={styles.testBody} style={{ background: "#1a1d2e", color: "#8b9dc3", fontSize: 11 }}>
+                    {JSON.stringify(testResults[task.id]._diag, null, 2)}
+                  </pre>
+                )}
+              </div>
+            )}
           </div>
         ))
       )}

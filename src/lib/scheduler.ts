@@ -4,23 +4,34 @@ import { createPage, closePage, getActiveTaskIds } from "./browser";
 import { performLogin } from "./login";
 import { setupInterceptor, startPolling } from "./monitor";
 
-// SSE event bus
+// SSE event bus — 使用 globalThis 跨 App Router / Pages Router 模块实例共享
 type SSECallback = (event: SSEEvent) => void;
-const sseListeners: Set<SSECallback> = new Set();
+const GLOBAL_KEY = "__vigil_sse_listeners__";
+
+function getListeners(): Set<SSECallback> {
+  const g = globalThis as Record<string, unknown>;
+  if (!g[GLOBAL_KEY]) {
+    g[GLOBAL_KEY] = new Set<SSECallback>();
+  }
+  return g[GLOBAL_KEY] as Set<SSECallback>;
+}
 
 export function onSSE(cb: SSECallback): () => void {
-  sseListeners.add(cb);
+  const listeners = getListeners();
+  listeners.add(cb);
   return () => {
-    sseListeners.delete(cb);
+    listeners.delete(cb);
   };
 }
 
 export function emitSSE(event: SSEEvent): void {
-  for (const listener of sseListeners) {
+  const listeners = getListeners();
+  console.log(`[SSE] emit event type=${event.type} taskId=${event.taskId} listeners=${listeners.size}`);
+  for (const listener of listeners) {
     try {
       listener(event);
-    } catch {
-      // ignore listener errors
+    } catch (e) {
+      console.error("[SSE] listener error:", e);
     }
   }
 }

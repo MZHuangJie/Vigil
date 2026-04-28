@@ -1,11 +1,25 @@
 import puppeteer, { Browser, Page } from "puppeteer";
 
-let browserInstance: Browser | null = null;
-const activePages = new Map<string, Page>();
+// 使用 globalThis 跨 webpack chunk 共享（App Router 每个路由是独立 entry）
+const BROWSER_KEY = "__vigil_browser__";
+const PAGES_KEY = "__vigil_active_pages__";
+
+function g(): Record<string, unknown> {
+  return globalThis as unknown as Record<string, unknown>;
+}
+
+function getSharedState<T>(key: string, factory: () => T): T {
+  const gt = g();
+  if (!gt[key]) {
+    gt[key] = factory();
+  }
+  return gt[key] as T;
+}
 
 export async function getBrowser(): Promise<Browser> {
-  if (!browserInstance || !browserInstance.isConnected()) {
-    browserInstance = await puppeteer.launch({
+  let browser = g()[BROWSER_KEY] as Browser | undefined;
+  if (!browser || !browser.isConnected()) {
+    browser = await puppeteer.launch({
       headless: process.env.PUPPETEER_HEADLESS !== "false",
       executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
       args: [
@@ -15,8 +29,9 @@ export async function getBrowser(): Promise<Browser> {
         "--disable-web-security",
       ],
     });
+    g()[BROWSER_KEY] = browser;
   }
-  return browserInstance;
+  return browser;
 }
 
 export async function createPage(taskId: string): Promise<Page> {
@@ -30,15 +45,19 @@ export async function createPage(taskId: string): Promise<Page> {
   page.setDefaultTimeout(30000);
   page.setDefaultNavigationTimeout(60000);
 
+  const activePages = getSharedState<Map<string, Page>>(PAGES_KEY, () => new Map());
   activePages.set(taskId, page);
   return page;
 }
 
 export function getPage(taskId: string): Page | undefined {
-  return activePages.get(taskId);
+  const activePages = g()[PAGES_KEY] as Map<string, Page> | undefined;
+  return activePages?.get(taskId);
 }
 
 export async function closePage(taskId: string): Promise<void> {
+  const activePages = g()[PAGES_KEY] as Map<string, Page> | undefined;
+  if (!activePages) return;
   const page = activePages.get(taskId);
   if (page) {
     try {
@@ -51,20 +70,24 @@ export async function closePage(taskId: string): Promise<void> {
 }
 
 export async function closeBrowser(): Promise<void> {
-  const taskIds = Array.from(activePages.keys());
-  for (const taskId of taskIds) {
-    await closePage(taskId);
+  const activePages = g()[PAGES_KEY] as Map<string, Page> | undefined;
+  if (activePages) {
+    for (const taskId of Array.from(activePages.keys())) {
+      await closePage(taskId);
+    }
   }
-  if (browserInstance) {
+  const browser = g()[BROWSER_KEY] as Browser | undefined;
+  if (browser) {
     try {
-      await browserInstance.close();
+      await browser.close();
     } catch {
       // browser may already be closed
     }
-    browserInstance = null;
+    g()[BROWSER_KEY] = null;
   }
 }
 
 export function getActiveTaskIds(): string[] {
-  return Array.from(activePages.keys());
+  const activePages = g()[PAGES_KEY] as Map<string, Page> | undefined;
+  return activePages ? Array.from(activePages.keys()) : [];
 }

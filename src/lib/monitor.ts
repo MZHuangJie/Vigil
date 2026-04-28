@@ -41,20 +41,26 @@ export async function startPolling(page: Page, config: TaskConfig): Promise<Node
     return null;
   }
 
+  const baseUrl = config.monitor.urlPattern;
+  const params = config.monitor.requestParams || {};
+  const paramStr = new URLSearchParams(params).toString();
+  const fullUrl = paramStr ? `${baseUrl}${baseUrl.includes("?") ? "&" : "?"}${paramStr}` : baseUrl;
+
   const interval = setInterval(async () => {
     try {
       const result = await page.evaluate(
-        (opts: { urlPattern: string; method: string; body: string }) => {
-          return fetch(opts.urlPattern, {
+        (opts: { url: string; method: string; body: string; headers: Record<string, string> }) => {
+          return fetch(opts.url, {
             method: opts.method || "GET",
-            headers: { "Content-Type": "application/json" },
+            headers: opts.headers,
             body: opts.method !== "GET" ? opts.body : undefined,
           }).then((res) => res.json());
         },
         {
-          urlPattern: config.monitor.urlPattern,
+          url: fullUrl,
           method: config.monitor.requestMethod || "GET",
           body: config.monitor.requestBody || "",
+          headers: config.monitor.requestHeaders || {},
         }
       );
 
@@ -65,8 +71,8 @@ export async function startPolling(page: Page, config: TaskConfig): Promise<Node
         raw: result,
       };
 
-      addEvent(config.id, "stat", { url: config.monitor.urlPattern, fields: data.fields });
-      emitSSE({ type: "stat", taskId: config.id, data: { url: config.monitor.urlPattern, fields: data.fields } });
+      addEvent(config.id, "stat", { url: fullUrl, fields: data.fields });
+      emitSSE({ type: "stat", taskId: config.id, data: { url: fullUrl, fields: data.fields } });
 
       processExtractedData(config, data);
     } catch (error) {

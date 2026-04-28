@@ -46,6 +46,8 @@ export interface TaskConfig {
     pollIntervalMs?: number;
     requestMethod?: string;
     requestBody?: string;
+    requestParams?: Record<string, string>;
+    requestHeaders?: Record<string, string>;
   };
   extraction: {
     fields: ExtractionField[];

@@ -11,16 +11,19 @@
   color: var(--text-primary);
 }
 
+.taskItemWrapper {
+  border-bottom: 1px solid var(--border-color);
+}
+
+.taskItemWrapper:last-child {
+  border-bottom: none;
+}
+
 .taskItem {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 10px 0;
-  border-bottom: 1px solid var(--border-color);
-}
-
-.taskItem:last-child {
-  border-bottom: none;
 }
 
 .taskInfo {
@@ -118,4 +121,49 @@
 .errorMsg {
   color: var(--danger-color);
   font-size: 12px;
+}
+
+.testBtn {
+  color: #60a5fa;
+  border-color: #60a5fa;
+}
+
+.testBtn:hover {
+  background: rgba(96, 165, 250, 0.1);
+}
+
+.testResult {
+  margin-top: 8px;
+  padding: 8px 12px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+.testOk {
+  color: #22c55e;
+  font-weight: 600;
+}
+
+.testFail {
+  color: #ef4444;
+  font-weight: 600;
+}
+
+.testError {
+  color: #f0a020;
+  margin-left: 8px;
+}
+
+.testBody {
+  margin: 6px 0 0 0;
+  padding: 8px;
+  background: #1a1d2e;
+  border-radius: 4px;
+  color: #94a3b8;
+  font-size: 11px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 200px;
+  overflow-y: auto;
 }

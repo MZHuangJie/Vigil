@@ -2,7 +2,7 @@
 
 ## 项目概述
 
-Vigil 是一个基于 Puppeteer + Next.js 的网页请求监控系统。它可以：
+Vigil 是一个基于 Electron + Next.js + Puppeteer 的桌面网页请求监控系统。它可以：
 1. 在真实浏览器中打开指定网页并自动登录
 2. 监听匹配规则的 HTTP 请求
 3. 按定时或事件驱动提取响应数据中的指定字段
@@ -12,27 +12,34 @@ Vigil 是一个基于 Puppeteer + Next.js 的网页请求监控系统。它可�
 ## 架构设计
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                    用户界面 (Next.js)                     │
-│  ┌─────────────┐  ┌──────────────┐  ┌───────────────┐  │
-│  │  任务配置    │  │   实时看板    │  │   告警面板    │  │
-│  └──────┬──────┘  └──────┬───────┘  └───────┬───────┘  │
-└─────────┼────────────────┼──────────────────┼──────────┘
-          │                │                  │
-┌─────────┼────────────────┼──────────────────┼──────────┐
-│         ▼                ▼                  ▼           │
-│                    API 路由层 (Route Handlers)            │
+┌──────────────────────────────────────────────────────────┐
+│                 Electron 桌面壳                           │
+│  ┌───────────────────────────────────────────────────┐  │
+│  │              BrowserWindow                        │  │
+│  │  ┌─────────────────────────────────────────────┐  │  │
+│  │  │            用户界面 (Next.js)                 │  │  │
+│  │  │  ┌───────────┐ ┌──────────┐ ┌────────────┐  │  │  │
+│  │  │  │ 任务配置   │ │ 实时看板  │ │  告警面板   │  │  │  │
+│  │  │  └─────┬─────┘ └────┬─────┘ └──────┬─────┘  │  │  │
+│  │  └────────┼────────────┼──────────────┼────────┘  │  │
+│  └───────────┼────────────┼──────────────┼───────────┘  │
+└──────────────┼────────────┼──────────────┼──────────────┘
+               │            │              │
+┌──────────────┼────────────┼──────────────┼──────────────┐
+│              ▼            ▼              ▼               │
+│                 API 路由层 (Route Handlers)               │
 │  POST /api/tasks  GET /api/tasks  DELETE /api/tasks/:id  │
-│  GET  /api/stats  POST /api/events                       │
+│  PATCH /api/tasks/:id  GET /api/stats  GET /api/events   │
+│  POST /api/tasks/:id/start  POST /api/tasks/:id/stop     │
 └──────────────────────┬──────────────────────────────────┘
                        │
 ┌──────────────────────┼──────────────────────────────────┐
 │                      ▼                                    │
 │                 核心引擎 (Puppeteer)                       │
 │  ┌──────────┐  ┌────────────┐  ┌──────────────────────┐ │
-│  │ 登录模块  │  │ 请求拦截器  │  │   定时调度器         │ │
+│  │ 登录模块  │  │ 请求拦截器  │  │   轮询调度器         │ │
 │  │ 自动填写  │  │ page.on()  │  │   setInterval()     │ │
-│  │ 维持会话  │  │ 模式匹配   │  │   cron 表达式       │ │
+│  │ 维持会话  │  │ 模式匹配   │  │   SSE 事件推送      │ │
 │  └──────────┘  └─────┬──────┘  └──────────┬───────────┘ │
 └──────────────────────┼─────────────────────┼────────────┘
                        │                     │
@@ -118,11 +125,15 @@ interface StatGroup {
 ```typescript
 interface StatAction {
   id: string;
-  type: "log" | "toast" | "webhook" | "dingtalk" | "wework";
+  type: "log" | "toast" | "webhook" | "dingtalk" | "wework" | "wework_user";
   condition: string;               // 触发条件描述
   config: {
     webhookUrl?: string;           // Webhook 地址
     messageTemplate: string;       // 消息模板，支持 {{fieldName}} 变量
+    corpId?: string;               // 企业微信应用 CorpID
+    agentId?: string;              // 企业微信应用 AgentID
+    corpSecret?: string;           // 企业微信应用 Secret
+    toUser?: string;               // 企业微信消息接收人
   };
 }
 ```
@@ -150,13 +161,13 @@ interface StatAction {
 | 组件 | 技术 | 说明 |
 |------|------|------|
 | 框架 | Next.js 14 (App Router) | 前后端一体 |
+| 桌面壳 | Electron 33+ | 原生窗口 + 托盘 + 菜单 |
 | 浏览器引擎 | Puppeteer | Chromium 自动化 |
-| 数据提取 | jsonpath | JSONPath 表达式解析 |
-| 定时任务 | node-cron | Cron 表达式支持 |
-| 通知 | node-fetch | Webhook HTTP 调用 |
+| 数据提取 | jsonpath-plus | JSONPath 表达式解析 |
+| 实时推送 | SSE (Server-Sent Events) | 浏览器端实时事件流，无需额外依赖 |
+| 通知 | fetch (Web 标准 API) | Webhook / 钉钉 / 企业微信 HTTP 调用 |
 | UI | React 18 + CSS Modules | 组件化界面 |
-| 状态管理 | React Context | 跨组件共享任务状态 |
-| 持久化 | SQLite (better-sqlite3) | 任务配置 + 统计历史 |
+| 持久化 | SQLite (better-sqlite3) | 任务配置 + 事件日志 + 统计历史 |
 
 ## 目录结构
 
@@ -164,33 +175,41 @@ interface StatAction {
 Vigil/
 ├── Documents/
 │   └── DESIGN.md
+├── electron/
+│   ├── main.js                     # Electron 主进程
+│   └── preload.js                  # 预加载脚本（contextBridge）
 ├── src/
 │   ├── app/
 │   │   ├── layout.tsx
 │   │   ├── page.tsx
+│   │   ├── page.module.css
 │   │   ├── globals.css
 │   │   └── api/
 │   │       ├── tasks/
-│   │       │   ├── route.ts          # GET/POST 任务列表
+│   │       │   ├── route.ts          # GET 列表 / POST 创建
 │   │       │   └── [id]/
-│   │       │       └── route.ts      # GET/DELETE 单个任务
+│   │       │       ├── route.ts      # GET 详情 / PATCH 更新 / DELETE 删除
+│   │       │       ├── start/
+│   │       │       │   └── route.ts  # POST 启动任务
+│   │       │       └── stop/
+│   │       │           └── route.ts  # POST 停止任务
 │   │       ├── events/
-│   │       │   └── route.ts          # SSE 实时事件流
+│   │       │   └── route.ts          # GET SSE 实时事件流
 │   │       └── stats/
 │   │           └── route.ts          # GET 统计数据
 │   ├── lib/
 │   │   ├── types.ts                  # 类型定义
 │   │   ├── db.ts                     # SQLite 封装
 │   │   ├── browser.ts               # Puppeteer 启动/管理
-│   │   ├── monitor.ts               # 请求拦截/监听
+│   │   ├── monitor.ts               # 请求拦截/轮询
 │   │   ├── login.ts                 # 自动登录
 │   │   ├── extractor.ts            # JSONPath 字段提取
-│   │   ├── scheduler.ts            # 定时任务调度
+│   │   ├── scheduler.ts            # 任务启停 + SSE 事件总线
 │   │   ├── stats.ts                 # 统计分析
 │   │   └── notifier.ts             # 通知发送
 │   └── components/
 │       ├── TaskConfig.tsx           # 任务配置表单
-│       ├── TaskDashboard.tsx        # 任务运行状态
+│       ├── TaskDashboard.tsx        # 任务列表/状态卡片
 │       ├── TaskLog.tsx              # 实时日志流
 │       ├── AlertPanel.tsx           # 告警面板
 │       └── StatChart.tsx            # 统计图表
@@ -205,7 +224,7 @@ Vigil/
 
 ```
 任务 {{taskName}} 触发告警：
-字段 {{fieldName}} 值为 {{value}}，{{operator}} 阈值 {{threshold}}
+字段 {{fieldName}}：{{operator}} 阈值 {{threshold}}
 统计窗口：{{windowFrom}} ~ {{windowTo}}
 当前统计：{{statSummary}}
 ```
