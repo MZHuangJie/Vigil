@@ -63,10 +63,13 @@ export async function startPolling(page: Page, config: TaskConfig): Promise<Node
     try {
       const result = await page.evaluate(
         (opts: { url: string; method: string; body: string; headers: Record<string, string> }) => {
-          return fetch(opts.url, {
+          const url = new URL(opts.url);
+          url.searchParams.set("_t", String(Date.now()));
+          return fetch(url.toString(), {
             method: opts.method || "GET",
             headers: opts.headers,
             body: opts.method !== "GET" ? opts.body : undefined,
+            cache: "no-store",
           }).then((res) => res.json());
         },
         {
