@@ -45,6 +45,13 @@
   white-space: nowrap;
 }
 
+.taskId {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: monospace;
+  margin-top: 2px;
+}
+
 .taskActions {
   display: flex;
   gap: 6px;

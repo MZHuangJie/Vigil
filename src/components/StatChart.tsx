@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useCallback } from "react";
-import type { StatRecord } from "@/lib/types";
+import { useState, useEffect, useCallback } from "react";
+import type { StatRecord, TaskConfig } from "@/lib/types";
 import styles from "./StatChart.module.css";
 
 interface StatSummary {
@@ -14,11 +14,19 @@ interface StatSummary {
 }
 
 export default function StatChart() {
+  const [tasks, setTasks] = useState<TaskConfig[]>([]);
   const [taskId, setTaskId] = useState("");
   const [windowSeconds, setWindowSeconds] = useState(3600);
   const [summary, setSummary] = useState<StatSummary[]>([]);
   const [records, setRecords] = useState<StatRecord[]>([]);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/tasks")
+      .then((res) => res.json())
+      .then((data) => setTasks(data))
+      .catch(() => {});
+  }, []);
 
   const fetchStats = useCallback(async () => {
     if (!taskId.trim()) return;
@@ -43,7 +51,14 @@ export default function StatChart() {
     <div className={styles.chart}>
       <h2>统计图表</h2>
       <div className={styles.controls}>
-        <input value={taskId} onChange={(e) => setTaskId(e.target.value)} placeholder="输入任务 ID" style={{ width: 280 }} />
+        <select value={taskId} onChange={(e) => setTaskId(e.target.value)}>
+          <option value="">-- 选择任务 --</option>
+          {tasks.map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.name}
+            </option>
+          ))}
+        </select>
         <input type="number" value={windowSeconds} onChange={(e) => setWindowSeconds(Number(e.target.value))} placeholder="窗口(秒)" style={{ width: 80 }} />
         <button onClick={fetchStats} disabled={loading}>
           {loading ? "加载中..." : "查询"}
@@ -77,7 +92,7 @@ export default function StatChart() {
       )}
 
       {!loading && summary.length === 0 && (
-        <div className={styles.empty}>输入任务 ID 后点击查询</div>
+        <div className={styles.empty}>选择任务后点击查询</div>
       )}
     </div>
   );

@@ -166,6 +166,7 @@ export default function TaskDashboard({ onSelect, refreshFlag }: Props) {
                   {task.name}
                 </div>
                 <div className={styles.taskUrl}>{task.targetUrl}</div>
+                <div className={styles.taskId}>ID: {task.id.slice(0, 8)}</div>
               </div>
               <div className={styles.taskActions}>
                 {task.status === "running" ? (
